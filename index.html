@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antibes: Sound Reactive Artwork</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(to bottom, #dbeafe, #fce7f3);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        h1 {
+            font-family: Georgia, serif;
+            font-size: 2.5rem;
+            color: #1e293b;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .canvas-container {
+            position: relative;
+            margin-bottom: 2rem;
+        }
+
+        canvas {
+            border: 4px solid rgba(255, 255, 255, 0.5);
+            border-radius: 0.5rem;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+            background: white;
+            cursor: crosshair;
+        }
+
+        video {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 192px;
+            height: 144px;
+            border: 2px solid white;
+            border-radius: 0.5rem;
+            object-fit: cover;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        video.active {
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        button {
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 9999px;
+            font-weight: 500;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        #micBtn {
+            background: #2563eb;
+            color: white;
+        }
+
+        #micBtn.active {
+            background: #ef4444;
+        }
+
+        #cameraBtn {
+            background: #475569;
+            color: white;
+        }
+
+        #cameraBtn.active {
+            background: #9333ea;
+        }
+
+        .sound-meter {
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            background: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .sound-meter.active {
+            display: flex;
+        }
+
+        .sound-meter span {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        .sound-bar {
+            width: 192px;
+            height: 10px;
+            background: #f1f5f9;
+            border-radius: 9999px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .sound-level {
+            height: 100%;
+            background: linear-gradient(to right, #4ade80, #3b82f6);
+            transition: width 75ms ease-out;
+            width: 0%;
+        }
+
+        .threshold-line {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: rgba(0, 0, 0, 0.2);
+            left: 30%;
+        }
+
+        .clap-indicator {
+            color: #f97316;
+            font-weight: bold;
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .instructions {
+            margin-top: 2rem;
+            color: #64748b;
+            font-size: 0.875rem;
+            max-width: 28rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Antibes: Sound Reactive Artwork</h1>
+    
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+    
+    <div class="controls">
+        <button id="micBtn">🎤 Mic Off</button>
+        <button id="cameraBtn">📷 Camera Off</button>
+    </div>
+    
+    <div class="sound-meter" id="soundMeter">
+        <span>Sound Level</span>
+        <div class="sound-bar">
+            <div class="sound-level" id="soundLevel"></div>
+            <div class="threshold-line"></div>
+        </div>
+        <span id="clapIndicator"></span>
+    </div>
+    
+    <div class="instructions">
+        <p>Hover over the canvas to disturb the dots. Enable microphone to react to sound and claps.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('video');
+        const micBtn = document.getElementById('micBtn');
+        const cameraBtn = document.getElementById('cameraBtn');
+        const soundMeter = document.getElementById('soundMeter');
+        const soundLevel = document.getElementById('soundLevel');
+        const clapIndicator = document.getElementById('clapIndicator');
+
+        let mousePos = { x: 0, y: 0 };
+        let micEnabled = false;
+        let cameraEnabled = false;
+        let soundLevelValue = 0;
+        let colorShift = 0;
+        let clapDetected = false;
+        let clapTimeout = null;
+        const clapThreshold = 0.3;
+        let dots = [];
+        let audioContext = null;
+        let analyser = null;
+        let micStream = null;
+
+        const baseColors = {
+            deepSkyBlue: ['#2060C0', '#3070D0', '#1850B0', '#2868C8', '#4080D8'],
+            midSkyBlue: ['#4088D8', '#5098E0', '#3878D0', '#60A8E8'],
+            lightSkyBlue: ['#7090D0', '#80A0D8', '#90B0E0', '#6888C8'],
+            paleSkyBlue: ['#A0C8E8', '#B0D8F0', '#C0E0F8'],
+            hotPink: ['#FF6090', '#FF70A0', '#FF5088', '#F85098'],
+            rosePink: ['#FF88B0', '#FF98C0', '#FF78A8', '#F888B8'],
+            lightPink: ['#FFB0D0', '#FFC0D8', '#FFA8C8', '#FFB870'],
+            pureWhite: ['#FFFFFF', '#FFFEF8', '#FFF8F0'],
+            waterDeepBlue: ['#3058A0', '#2848A8', '#4068B0', '#3860B8'],
+            waterMidBlue: ['#5078C0', '#6088D0', '#4868B8', '#7098D8'],
+            waterLavender: ['#8070B0', '#9080C0', '#7060A8', '#A090C8'],
+            shoreGreen: ['#70A850', '#80B860', '#60A048', '#90C870'],
+            boatDark: ['#203020', '#304030', '#182818', '#284028'],
+            sailRed: ['#C03030', '#D03838', '#B02828', '#E04040']
+        };
+
+        function shiftColor(hexColor, hueShift) {
+            const hex = hexColor.replace('#', '');
+            const r = parseInt(hex.substr(0, 2), 16) / 255;
+            const g = parseInt(hex.substr(2, 2), 16) / 255;
+            const b = parseInt(hex.substr(4, 2), 16) / 255;
+
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            let h = 0, s = 0, l = (max + min) / 2;
+
+            if (max !== min) {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+                else if (max === g) h = ((b - r) / d + 2) / 6;
+                else h = ((r - g) / d + 4) / 6;
+            }
+
+            h = (h + hueShift) % 1;
+
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+
+            let newR, newG, newB;
+            if (s === 0) {
+                newR = newG = newB = l;
+            } else {
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                newR = hue2rgb(p, q, h + 1/3);
+                newG = hue2rgb(p, q, h);
+                newB = hue2rgb(p, q, h - 1/3);
+            }
+
+            const toHex = (x) => {
+                const hex = Math.round(x * 255).toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            };
+
+            return '#' + toHex(newR) + toHex(newG) + toHex(newB);
+        }
+
+        function initCanvas() {
+            canvas.width = Math.min(window.innerWidth - 64, 1200);
+            canvas.height = Math.min(window.innerHeight - 200, 800);
+            
+            dots = [];
+            const categories = Object.keys(baseColors);
+            const numDots = 2000;
+            
+            for (let i = 0; i < numDots; i++) {
+                const category = categories[Math.floor(Math.random() * categories.length)];
+                const colors = baseColors[category];
+                const colorIndex = Math.floor(Math.random() * colors.length);
+                
+                dots.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    baseX: 0,
+                    baseY: 0,
+                    size: Math.random() * 3 + 2,
+                    colorCategory: category,
+                    colorIndex: colorIndex,
+                    velocityX: 0,
+                    velocityY: 0
+                });
+                
+                dots[i].baseX = dots[i].x;
+                dots[i].baseY = dots[i].y;
+            }
+        }
+
+        async function initMicrophone() {
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.5;
+                const source = audioContext.createMediaStreamSource(micStream);
+                source.connect(analyser);
+                detectSound();
+            } catch (err) {
+                console.error("Microphone error:", err);
+            }
+        }
+
+        function detectSound() {
+            if (!analyser) return;
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            function checkSound() {
+                if (!micEnabled) return;
+                analyser.getByteFrequencyData(dataArray);
+                
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                const average = (sum / dataArray.length) * 2.5;
+                const normalizedLevel = Math.min(1, Math.max(0, average / 255));
+                soundLevelValue = normalizedLevel;
+                
+                soundLevel.style.width = (normalizedLevel * 100) + '%';
+
+                if (normalizedLevel > clapThreshold) {
+                    clapDetected = true;
+                    clapIndicator.textContent = '👏 CLAP!';
+                    clapIndicator.className = 'clap-indicator';
+                    
+                    if (clapTimeout) clearTimeout(clapTimeout);
+                    clapTimeout = setTimeout(() => {
+                        clapDetected = false;
+                        clapIndicator.textContent = '';
+                        clapIndicator.className = '';
+                    }, 500);
+                    
+                    colorShift = (colorShift + 0.2 + Math.random() * 0.3) % 1;
+                }
+
+                if (normalizedLevel <= clapThreshold) {
+                    const target = normalizedLevel * 0.5;
+                    const next = colorShift + (target - colorShift) * 0.2;
+                    colorShift = isNaN(next) ? 0 : next;
+                }
+                
+                requestAnimationFrame(checkSound);
+            }
+            requestAnimationFrame(checkSound);
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            dots.forEach(dot => {
+                const dx = mousePos.x - dot.x;
+                const dy = mousePos.y - dot.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                let localShift = colorShift || 0;
+                if (distance < 120 && distance > 0) {
+                    const force = (1 - distance / 120) * 0.6;
+                    const angle = Math.atan2(dy, dx);
+                    dot.velocityX -= Math.cos(angle) * force;
+                    dot.velocityY -= Math.sin(angle) * force;
+                    localShift += (1 - distance / 120) * 0.15;
+                }
+
+                dot.velocityX += (dot.baseX - dot.x) * 0.06;
+                dot.velocityY += (dot.baseY - dot.y) * 0.06;
+
+                if (soundLevelValue > 0.05) {
+                    dot.velocityX += (Math.random() - 0.5) * soundLevelValue * 15;
+                    dot.velocityY += (Math.random() - 0.5) * soundLevelValue * 15;
+                }
+
+                dot.velocityX *= 0.88;
+                dot.velocityY *= 0.88;
+                dot.x += dot.velocityX;
+                dot.y += dot.velocityY;
+
+                const color = shiftColor(baseColors[dot.colorCategory][dot.colorIndex], localShift % 1);
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, dot.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            requestAnimationFrame(animate);
+        }
+
+        micBtn.addEventListener('click', async () => {
+            micEnabled = !micEnabled;
+            
+            if (micEnabled) {
+                await initMicrophone();
+                micBtn.textContent = '🎤 Mic On';
+                micBtn.classList.add('active');
+                soundMeter.classList.add('active');
+            } else {
+                micBtn.textContent = '🎤 Mic Off';
+                micBtn.classList.remove('active');
+                soundMeter.classList.remove('active');
+                
+                if (audioContext) {
+                    audioContext.close();
+                    audioContext = null;
+                }
+                if (micStream) {
+                    micStream.getTracks().forEach(t => t.stop());
+                    micStream = null;
+                }
+            }
+        });
+
+        cameraBtn.addEventListener('click', async () => {
+            cameraEnabled = !cameraEnabled;
+            
+            if (cameraEnabled) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                    video.play().catch(e => console.error("Video play error:", e));
+                    video.classList.add('active');
+                    cameraBtn.textContent = '📷 Camera On';
+                    cameraBtn.classList.add('active');
+                } catch (err) {
+                    console.error("Camera error:", err);
+                    alert("Camera access required");
+                    cameraEnabled = false;
+                }
+            } else {
+                const stream = video.srcObject;
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                video.classList.remove('active');
+                cameraBtn.textContent = '📷 Camera Off';
+                cameraBtn.classList.remove('active');
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mousePos.x = e.clientX - rect.left;
+            mousePos.y = e.clientY - rect.top;
+        });
+
+        window.addEventListener('resize', initCanvas);
+
+        initCanvas();
+        animate();
+    </script>
+</body>
+</html>
