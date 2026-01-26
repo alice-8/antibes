@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Audio Visualizer with Camera</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #0a1428;
+    }
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    #video {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 240px;
+      height: 180px;
+      border: 3px solid #4dd2ff;
+      border-radius: 10px;
+      display: none;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(77, 210, 255, 0.5);
+      transform: scaleX(-1);
+    }
+    #controls {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+      display: flex;
+      gap: 10px;
+      flex-direction: column;
+    }
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+    #micBtn {
+      background: #ff4d4d;
+      color: white;
+    }
+    #micBtn:hover {
+      background: #ff3333;
+      transform: translateY(-2px);
+    }
+    #micBtn.active {
+      background: #4dff88;
+    }
+    #cameraBtn {
+      background: #4dd2ff;
+      color: white;
+    }
+    #cameraBtn:hover {
+      background: #33c5ff;
+      transform: translateY(-2px);
+    }
+    #cameraBtn.active {
+      background: #ffd24d;
+      color: #0a1428;
+    }
+    #status {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: #4dd2ff;
+      font-family: monospace;
+      font-size: 12px;
+      z-index: 100;
+      background: rgba(10, 20, 40, 0.8);
+      padding: 10px 15px;
+      border-radius: 5px;
+      border: 1px solid #4dd2ff;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<video id="video" autoplay playsinline></video>
+
+<div id="controls">
+  <button id="micBtn">🎤 Start Mic</button>
+  <button id="cameraBtn">📷 Start Camera</button>
+</div>
+
+<div id="status">
+  <div>🎤 Mic: <span id="micStatus">OFF</span></div>
+  <div>📷 Camera: <span id="camStatus">OFF</span></div>
+  <div>🔊 Volume: <span id="volStatus">0.00</span></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+
+<script>
+/* ----------------------------------
+   Utilities (colors)
+---------------------------------- */
+const allColors = [
+  "#ff4d4d",
+  "#4dd2ff",
+  "#ffd24d",
+  "#9d4dff",
+  "#4dff88",
+];
+
+function shiftColor(hex, shift) {
+  const num = parseInt(hex.slice(1), 16);
+  let r = (num >> 16) + shift;
+  let g = ((num >> 8) & 0xff) + shift;
+  let b = (num & 0xff) + shift;
+
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/* ----------------------------------
+   Canvas + State
+---------------------------------- */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const video = document.getElementById("video");
+
+let dots = [];
+let mouse = { x: -1000, y: -1000 };
+let fingerPositions = []; // Track multiple finger positions
+let colorShift = 0;
+let lastVolume = 0;
+
+/* ----------------------------------
+   Audio
+---------------------------------- */
+let audioContext = null;
+let analyser = null;
+let dataArray = null;
+let audioSource = null;
+let audioStream = null;
+let micActive = false;
+
+/* ----------------------------------
+   Camera
+---------------------------------- */
+let cameraStream = null;
+let cameraActive = false;
+let hands = null;
+let camera = null;
+
+/* ----------------------------------
+   UI Elements
+---------------------------------- */
+const micBtn = document.getElementById("micBtn");
+const cameraBtn = document.getElementById("cameraBtn");
+const micStatus = document.getElementById("micStatus");
+const camStatus = document.getElementById("camStatus");
+const volStatus = document.getElementById("volStatus");
+
+/* ----------------------------------
+   Callbacks
+---------------------------------- */
+function onVolumeChange(vol) {
+  volStatus.textContent = vol.toFixed(2);
+}
+
+function onClap() {
+  console.log("👏 Clap detected!");
+  // Visual feedback on clap
+  colorShift += 30;
+}
+
+/* ----------------------------------
+   Resize + Init Dots
+---------------------------------- */
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  initDots();
+}
+
+function initDots() {
+  dots = [];
+  const numDots = 2000;
+
+  for (let i = 0; i < numDots; i++) {
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height;
+
+    dots.push({
+      x,
+      y,
+      baseX: x,
+      baseY: y,
+      size: Math.random() * 3 + 1,
+      color: allColors[Math.floor(Math.random() * allColors.length)],
+      vx: 0,
+      vy: 0,
+    });
+  }
+}
+
+/* ----------------------------------
+   Mouse Tracking
+---------------------------------- */
+window.addEventListener("mousemove", (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+/* ----------------------------------
+   Audio Control
+---------------------------------- */
+async function startMic() {
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    audioSource = audioContext.createMediaStreamSource(audioStream);
+
+    analyser.fftSize = 256;
+    audioSource.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    
+    micActive = true;
+    micBtn.textContent = "🎤 Stop Mic";
+    micBtn.classList.add("active");
+    micStatus.textContent = "ON";
+  } catch (err) {
+    alert("Microphone access denied.");
+    console.error(err);
+  }
+}
+
+function stopMic() {
+  if (audioSource) audioSource.disconnect();
+  if (analyser) analyser.disconnect();
+  if (audioContext && audioContext.state !== "closed") audioContext.close();
+  if (audioStream) audioStream.getTracks().forEach(t => t.stop());
+
+  audioSource = analyser = audioContext = dataArray = audioStream = null;
+  micActive = false;
+  micBtn.textContent = "🎤 Start Mic";
+  micBtn.classList.remove("active");
+  micStatus.textContent = "OFF";
+}
+
+micBtn.addEventListener("click", () => {
+  if (micActive) {
+    stopMic();
+  } else {
+    startMic();
+  }
+});
+
+/* ----------------------------------
+   Camera Control + Hand Tracking
+---------------------------------- */
+function onHandResults(results) {
+  fingerPositions = [];
+  
+  if (results.multiHandLandmarks) {
+    for (const landmarks of results.multiHandLandmarks) {
+      // Get fingertips (indices 4, 8, 12, 16, 20)
+      const fingertips = [4, 8, 12, 16, 20];
+      
+      for (const idx of fingertips) {
+        const landmark = landmarks[idx];
+        // Convert from video coordinates to canvas coordinates
+        // Note: video is flipped, so we need to flip x coordinate
+        const x = (1 - landmark.x) * canvas.width;
+        const y = landmark.y * canvas.height;
+        fingerPositions.push({ x, y });
+      }
+    }
+  }
+}
+
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { width: 640, height: 480 } 
+    });
+    video.srcObject = cameraStream;
+    video.style.display = "block";
+    
+    // Initialize MediaPipe Hands
+    hands = new Hands({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+      }
+    });
+    
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    
+    hands.onResults(onHandResults);
+    
+    // Start camera processing
+    camera = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+    
+    cameraActive = true;
+    cameraBtn.textContent = "📷 Stop Camera";
+    cameraBtn.classList.add("active");
+    camStatus.textContent = "ON + Hand Tracking";
+  } catch (err) {
+    alert("Camera access denied.");
+    console.error(err);
+  }
+}
+
+function stopCamera() {
+  if (camera) {
+    camera.stop();
+    camera = null;
+  }
+  if (hands) {
+    hands.close();
+    hands = null;
+  }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+  }
+  video.srcObject = null;
+  video.style.display = "none";
+  cameraStream = null;
+  cameraActive = false;
+  fingerPositions = [];
+  cameraBtn.textContent = "📷 Start Camera";
+  cameraBtn.classList.remove("active");
+  camStatus.textContent = "OFF";
+}
+
+cameraBtn.addEventListener("click", () => {
+  if (cameraActive) {
+    stopCamera();
+  } else {
+    startCamera();
+  }
+});
+
+/* ----------------------------------
+   Animation Loop
+---------------------------------- */
+function animate() {
+  ctx.fillStyle = "rgba(10, 20, 40, 0.2)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  let volume = 0;
+
+  if (analyser && dataArray) {
+    analyser.getByteFrequencyData(dataArray);
+    const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+    volume = avg / 255;
+  }
+
+  // Clap detection
+  if (volume > 0.3 && volume > lastVolume * 1.5) {
+    onClap();
+  }
+  lastVolume = Math.max(0.01, volume);
+  onVolumeChange(volume);
+
+  // Change colors on sound (low threshold)
+  if (volume > 0.02) {
+    colorShift = Math.floor(volume * 100) % 50;
+  } else {
+    colorShift *= 0.95; // Fade back
+  }
+
+  dots.forEach(dot => {
+    // Mouse repulsion
+    const dx = mouse.x - dot.x;
+    const dy = mouse.y - dot.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const maxDist = 150;
+
+    if (dist < maxDist) {
+      const force = (maxDist - dist) / maxDist;
+      dot.vx -= (dx / dist) * force * 5;
+      dot.vy -= (dy / dist) * force * 5;
+    }
+
+    // Finger repulsion - interact with all detected fingertips
+    for (const finger of fingerPositions) {
+      const fdx = finger.x - dot.x;
+      const fdy = finger.y - dot.y;
+      const fdist = Math.sqrt(fdx * fdx + fdy * fdy);
+      const fMaxDist = 150;
+
+      if (fdist < fMaxDist) {
+        const fforce = (fMaxDist - fdist) / fMaxDist;
+        dot.vx -= (fdx / fdist) * fforce * 5;
+        dot.vy -= (fdy / fdist) * fforce * 5;
+      }
+    }
+
+    // Audio jitter - MUCH stronger with louder volume
+    if (volume > 0.02) {
+      const jitterStrength = volume * 25; // Much stronger movement
+      dot.vx += (Math.random() - 0.5) * jitterStrength;
+      dot.vy += (Math.random() - 0.5) * jitterStrength;
+    }
+
+    // Spring to base - weaker when sound is loud so dots can move more freely
+    const springStrength = 0.05 * (1 - volume * 2);
+    dot.vx += (dot.baseX - dot.x) * springStrength;
+    dot.vy += (dot.baseY - dot.y) * springStrength;
+
+    // Friction - less friction when loud so dots move faster
+    const friction = 0.85 + (volume * 0.1);
+    dot.vx *= friction;
+    dot.vy *= friction;
+
+    dot.x += dot.vx;
+    dot.y += dot.vy;
+
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, dot.size + volume * 5, 0, Math.PI * 2);
+    ctx.fillStyle = shiftColor(dot.color, colorShift);
+    ctx.fill();
+  });
+
+  requestAnimationFrame(animate);
+}
+
+/* ----------------------------------
+   Boot
+---------------------------------- */
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+animate();
+</script>
+
+</body>
+</html>
