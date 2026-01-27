@@ -175,7 +175,7 @@ function animate(){
     currentSongIndex=(currentSongIndex+1)%songs.length;
     const nextSong=songs[currentSongIndex].audio;
     nextSong.play(); songPlaying=true;
-    nowPlaying.textContent="Now Playing: "+songs[currentSongIndex].file.replace(".mp3","");
+    nowPlaying.textContent="Now Playing: "+songs[currentSongIndex].file.replace(".mp3","")+ " by Lukrembo";
 
     nextSong.onended=()=>{songPlaying=false;};
 
