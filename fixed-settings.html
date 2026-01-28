@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ultimate Interactive Audio-Visual Experience</title>
+<style>
+  * {box-sizing: border-box;}
+  html, body {margin:0;padding:0;overflow:hidden;background:#0a1428;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;}
+  
+  canvas {position:fixed;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none;}
+  #overlayCanvas {position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:10;}
+  
+  #video {
+    position:fixed;top:20px;right:20px;width:240px;height:180px;
+    border:3px solid #4dd2ff;border-radius:10px;display:none;z-index:100;
+    box-shadow:0 4px 20px rgba(77,210,255,0.5);transform:scaleX(-1);object-fit:cover;
+  }
+  
+  #controls {
+    position:fixed;top:20px;left:20px;z-index:100;
+    display:flex;gap:10px;flex-direction:column;
+  }
+  
+  button {
+    padding:12px 20px;border:none;border-radius:8px;
+    font-size:14px;font-weight:bold;cursor:pointer;
+    transition:all 0.3s;box-shadow:0 2px 10px rgba(0,0,0,0.3);
+    font-family:inherit;
+  }
+  button:hover {transform:translateY(-2px);box-shadow:0 4px 15px rgba(0,0,0,0.4);}
+  button:active {transform:translateY(0);}
+  
+  .btn-primary {background:#ff4d4d;color:white;}
+  .btn-primary:hover {background:#ff3333;}
+  .btn-primary.active {background:#4dff88;color:#0a1428;}
+  
+  .btn-secondary {background:#4dd2ff;color:white;}
+  .btn-secondary:hover {background:#33c5ff;}
+  .btn-secondary.active {background:#ffd24d;color:#0a1428;}
+  
+  .btn-accent {background:#9d4dff;color:white;}
+  .btn-accent:hover {background:#8a3deb;}
+  
+  .btn-danger {background:#ff6b6b;color:white;}
+  .btn-danger:hover {background:#ff5252;}
+  
+  #status {
+    position:fixed;bottom:20px;left:20px;
+    color:#4dd2ff;font-family:monospace;font-size:12px;z-index:100;
+    background:rgba(10,20,40,0.95);padding:15px 20px;border-radius:8px;
+    border:1px solid #4dd2ff;backdrop-filter:blur(10px);
+    max-width:280px;
+  }
+  #status div {margin:5px 0;display:flex;justify-content:space-between;gap:10px;}
+  #status .label {color:#88d4ff;}
+  #status .value {color:#fff;font-weight:bold;}
+  
+  #visualizer {
+    position:fixed;top:220px;right:20px;
+    width:240px;height:100px;z-index:100;
+    background:rgba(10,20,40,0.95);border:2px solid #4dd2ff;
+    border-radius:8px;backdrop-filter:blur(10px);
+    display:none;
+  }
+  #visualizer.show {display:block;}
+  
+  #nowPlaying {
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    color:white;font-family:monospace;font-size:clamp(20px, 5vw, 40px);
+    z-index:200;text-align:center;text-shadow:2px 2px 10px #000;
+    background:rgba(10,20,40,0.8);padding:30px 50px;border-radius:15px;
+    border:2px solid #4dd2ff;backdrop-filter:blur(10px);
+    opacity:0;transition:opacity 0.5s;pointer-events:none;
+  }
+  #nowPlaying.show {opacity:1;}
+  #nowPlaying .subtitle {font-size:0.5em;color:#88d4ff;margin-top:10px;}
+  
+  #settingsPanel {
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(10,20,40,0.98);border:2px solid #4dd2ff;
+    border-radius:15px;padding:30px;z-index:300;
+    display:none;backdrop-filter:blur(20px);
+    max-width:500px;width:90%;max-height:80vh;overflow-y:auto;
+  }
+  #settingsPanel.show {display:block;}
+  #settingsPanel h2 {margin:0 0 20px 0;color:#4dd2ff;text-align:center;}
+  
+  .setting-group {
+    margin:15px 0;padding:15px;
+    background:rgba(77,210,255,0.1);border-radius:8px;
+  }
+  .setting-group label {
+    display:block;color:#88d4ff;margin-bottom:8px;font-size:14px;
+  }
+  .setting-group input[type="range"] {width:100%;cursor:pointer;}
+  .setting-group input[type="color"] {
+    width:100%;height:40px;cursor:pointer;
+    border:2px solid #4dd2ff;border-radius:5px;
+  }
+  .setting-group select, .setting-group input[type="text"] {
+    width:100%;padding:8px;
+    background:rgba(10,20,40,0.8);border:1px solid #4dd2ff;
+    border-radius:5px;color:white;font-size:14px;
+  }
+  .setting-value {color:white;font-weight:bold;float:right;}
+  
+  .color-presets {display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;}
+  .color-preset {
+    width:40px;height:40px;border-radius:5px;cursor:pointer;
+    border:2px solid transparent;transition:all 0.3s;
+  }
+  .color-preset:hover {border-color:#4dd2ff;transform:scale(1.1);}
+  
+  #closeSettings {
+    margin-top:20px;width:100%;background:#4dd2ff;color:#0a1428;
+    padding:12px;border:none;border-radius:8px;font-weight:bold;cursor:pointer;
+  }
+  #closeSettings:hover {background:#33c5ff;}
+  
+  #beatIndicator {
+    position:fixed;top:20px;left:50%;transform:translateX(-50%);
+    width:60px;height:60px;border-radius:50%;
+    background:rgba(77,210,255,0.3);border:3px solid #4dd2ff;
+    z-index:100;display:none;
+    transition:all 0.1s;
+  }
+  #beatIndicator.beat {
+    transform:translateX(-50%) scale(1.3);
+    background:rgba(77,210,255,0.8);
+    box-shadow:0 0 30px rgba(77,210,255,0.8);
+  }
+  
+  #gestureHints {
+    position:fixed;bottom:20px;right:20px;z-index:100;
+    background:rgba(10,20,40,0.95);padding:15px 20px;border-radius:8px;
+    border:1px solid #9d4dff;color:#c5a3ff;font-size:12px;
+    max-width:220px;display:none;backdrop-filter:blur(10px);
+  }
+  #gestureHints.show {display:block;}
+  #gestureHints h4 {margin:0 0 10px 0;color:#9d4dff;}
+  #gestureHints div {margin:5px 0;}
+  
+  #playlist {
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    z-index:100;background:rgba(10,20,40,0.95);
+    padding:15px 20px;border-radius:8px;border:1px solid #4dd2ff;
+    backdrop-filter:blur(10px);display:none;
+    max-width:400px;width:90%;
+  }
+  #playlist.show {display:block;}
+  #playlist h4 {margin:0 0 10px 0;color:#4dd2ff;text-align:center;}
+  .playlist-item {
+    padding:10px;margin:5px 0;background:rgba(77,210,255,0.1);
+    border-radius:5px;cursor:pointer;transition:all 0.3s;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .playlist-item:hover {background:rgba(77,210,255,0.3);}
+  .playlist-item.active {background:rgba(77,210,255,0.5);border:1px solid #4dd2ff;}
+  .playlist-item .name {color:white;}
+  .playlist-item .duration {color:#88d4ff;font-size:0.9em;}
+  
+  #recordingIndicator {
+    position:fixed;top:100px;left:20px;z-index:100;
+    background:rgba(255,77,77,0.9);color:white;
+    padding:10px 15px;border-radius:8px;
+    font-weight:bold;display:none;
+    animation:pulse 1s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% {opacity:1;}
+    50% {opacity:0.5;}
+  }
+  
+  .particle-burst {
+    position:fixed;pointer-events:none;z-index:50;
+    width:10px;height:10px;border-radius:50%;
+  }
+  
+  #tooltips {
+    position:fixed;bottom:80px;left:20px;z-index:100;
+    background:rgba(10,20,40,0.95);padding:10px 15px;border-radius:8px;
+    border:1px solid #4dd2ff;color:#88d4ff;font-size:11px;
+    max-width:250px;display:none;backdrop-filter:blur(10px);
+  }
+  #tooltips.show {display:block;}
+  
+  #performanceMonitor {
+    position:fixed;top:20px;right:280px;z-index:100;
+    background:rgba(10,20,40,0.95);padding:10px 15px;border-radius:8px;
+    border:1px solid #4dd2ff;color:#88d4ff;font-size:11px;
+    display:none;backdrop-filter:blur(10px);
+  }
+  #performanceMonitor.show {display:block;}
+  
+  @media (max-width: 768px) {
+    #video {width:160px;height:120px;}
+    #controls {flex-direction:row;flex-wrap:wrap;}
+    button {padding:10px 15px;font-size:12px;}
+    #performanceMonitor {display:none !important;}
+  }
+  
+  .tab-container {display:flex;gap:10px;margin-bottom:15px;}
+  .tab {
+    flex:1;padding:10px;background:rgba(77,210,255,0.2);
+    border:1px solid #4dd2ff;border-radius:5px;text-align:center;
+    cursor:pointer;color:#88d4ff;transition:all 0.3s;
+  }
+  .tab.active {background:rgba(77,210,255,0.5);color:white;}
+  .tab-content {display:none;}
+  .tab-content.active {display:block;}
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<canvas id="overlayCanvas"></canvas>
+<video id="video" autoplay playsinline muted></video>
+
+<div id="controls">
+  <button id="micBtn" class="btn-primary">🎤 Mic</button>
+  <button id="cameraBtn" class="btn-secondary">📷 Camera</button>
+  <button id="settingsBtn" class="btn-accent">⚙️ Settings</button>
+  <button id="playlistBtn" class="btn-accent">🎵 Playlist</button>
+  <button id="recordBtn" class="btn-danger">⏺️ Record</button>
+</div>
+
+<div id="status">
+  <div><span class="label">🎤 Mic:</span><span class="value" id="micStatus">OFF</span></div>
+  <div><span class="label">📷 Camera:</span><span class="value" id="camStatus">OFF</span></div>
+  <div><span class="label">🔊 Volume:</span><span class="value" id="volStatus">0.00</span></div>
+  <div><span class="label">🎵 Song:</span><span class="value" id="songCount">0/5</span></div>
+  <div><span class="label">⚡ FPS:</span><span class="value" id="fpsStatus">60</span></div>
+  <div><span class="label">🎼 BPM:</span><span class="value" id="bpmStatus">0</span></div>
+  <div><span class="label">🔥 Energy:</span><span class="value" id="energyStatus">Low</span></div>
+</div>
+
+<div id="visualizer">
+  <canvas id="vizCanvas" width="236" height="96"></canvas>
+</div>
+
+<div id="beatIndicator"></div>
+<div id="recordingIndicator">🔴 Recording...</div>
+
+<div id="nowPlaying">
+  <div class="title">Now Playing: None</div>
+  <div class="subtitle">Clap or press spacebar to start!</div>
+</div>
+
+<div id="playlist">
+  <h4>🎵 Playlist</h4>
+  <div id="playlistItems"></div>
+</div>
+
+<div id="gestureHints">
+  <h4>Gestures:</h4>
+  <div id="gestureList">Move your hands!</div>
+</div>
+
+<div id="tooltips">
+  💡 <strong>Tips:</strong><br>
+  • Clap or press SPACE to change songs<br>
+  • Use arrow keys to adjust particles<br>
+  • Press P to toggle playlist<br>
+  • Press V to toggle visualizer
+</div>
+
+<div id="performanceMonitor">
+  <div>Particles: <span id="particleCount">2000</span></div>
+  <div>Draw Calls: <span id="drawCalls">0</span></div>
+  <div>Memory: <span id="memUsage">0 MB</span></div>
+</div>
+
+<div id="settingsPanel">
+  <h2>⚙️ Advanced Settings</h2>
+  
+  <div class="tab-container">
+    <div class="tab active" data-tab="visual">Visual</div>
+    <div class="tab" data-tab="audio">Audio</div>
+    <div class="tab" data-tab="interaction">Interaction</div>
+    <div class="tab" data-tab="effects">Effects</div>
+  </div>
+  
+  <div class="tab-content active" data-content="visual">
+    <div class="setting-group">
+      <label>Particle Count: <span class="setting-value" id="particleCountVal">2000</span></label>
+      <input type="range" id="particleCountSlider" min="500" max="10000" step="100" value="2000">
+    </div>
+    
+    <div class="setting-group">
+      <label>Visual Mode:</label>
+      <select id="visualMode">
+        <option value="particles">Particles</option>
+        <option value="waves">Waves</option>
+        <!-- <option value="spiral">Spiral</option>
+        <option value="constellation">Constellation</option>
+        <option value="fireworks">Fireworks</option>
+        <option value="galaxy">Galaxy</option>
+        <option value="neural">Neural Network</option> -->
+      </select>
+    </div>
+    
+    <div class="setting-group">
+      <label>Color Theme:</label>
+      <select id="colorTheme">
+        <option value="auto">Auto (Song-based)</option>
+        <option value="neon">Neon</option>
+        <option value="pastel">Pastel</option>
+        <option value="fire">Fire</option>
+        <option value="ocean">Ocean</option>
+        <option value="custom">Custom</option>
+      </select>
+      <div class="color-presets" id="colorPresets"></div>
+    </div>
+    
+    <div class="setting-group">
+      <label>Background Opacity: <span class="setting-value" id="bgOpacityVal">0.15</span></label>
+      <input type="range" id="bgOpacity" min="0.05" max="0.5" step="0.05" value="0.15">
+    </div>
+  </div>
+  
+  <div class="tab-content" data-content="audio">
+    <div class="setting-group">
+      <label>Beat Detection: <span class="setting-value" id="beatSensitivityVal">1.3</span></label>
+      <input type="range" id="beatSensitivity" min="1.1" max="2.0" step="0.1" value="1.3">
+    </div>
+    
+    <div class="setting-group">
+      <label>Audio Reactivity: <span class="setting-value" id="audioReactivityVal">1.0</span></label>
+      <input type="range" id="audioReactivity" min="0.5" max="3.0" step="0.1" value="1.0">
+    </div>
+    
+    <div class="setting-group">
+      <label>Frequency Range:</label>
+      <select id="frequencyRange">
+        <option value="full">Full Spectrum</option>
+        <option value="bass">Bass</option>
+        <option value="mid">Midrange</option>
+        <option value="high">Treble</option>
+      </select>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="showBeatIndicator" checked> Show beat indicator
+      </label>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="showVisualizer"> Show audio visualizer
+      </label>
+    </div>
+  </div>
+  
+  <div class="tab-content" data-content="interaction">
+    <div class="setting-group">
+      <label>Interaction Range: <span class="setting-value" id="interactionRangeVal">150</span></label>
+      <input type="range" id="interactionRange" min="50" max="400" step="10" value="150">
+    </div>
+    
+    <div class="setting-group">
+      <label>Interaction Force: <span class="setting-value" id="sensitivityVal">1.0</span></label>
+      <input type="range" id="sensitivity" min="0.3" max="3.0" step="0.1" value="1.0">
+    </div>
+    
+    <div class="setting-group">
+      <label>Physics:</label>
+      <select id="physicsMode">
+        <option value="default">Default</option>
+        <option value="bouncy">Bouncy</option>
+        <option value="sticky">Sticky</option>
+        <option value="chaotic">Chaotic</option>
+      </select>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="showTrails"> Show finger trails
+      </label>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="showGestures"> Show gesture detection
+      </label>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="mouseAttract"> Mouse attracts particles
+      </label>
+    </div>
+  </div>
+  
+  <div class="tab-content" data-content="effects">
+    <!--<div class="setting-group">
+      <label>
+        <input type="checkbox" id="enableBloom"> Bloom effect
+      </label>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="enableParticleTrails" checked> Particle motion trails
+      </label>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="enableScreenShake"> Screen shake on beats
+      </label>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="enableColorShift"> Dynamic color shifting
+      </label>
+    </div> -->
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="showTooltips" checked> Show tooltips
+      </label>
+    </div>
+    
+    <div class="setting-group">
+      <label>
+        <input type="checkbox" id="showPerformance"> Show performance monitor
+      </label>
+    </div>
+  </div>
+  
+  <button id="closeSettings">Close Settings</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+
+<script>
+// ============================================
+// Enhanced Configuration
+// ============================================
+const config = {
+  particleCount: 2000,
+  interactionRange: 150,
+  sensitivity: 1.0,
+  visualMode: 'particles',
+  colorTheme: 'auto',
+  showTrails: false,
+  showGestures: false,
+  mouseAttract: false,
+  beatSensitivity: 1.3,
+  audioReactivity: 1.0,
+  frequencyRange: 'full',
+  showBeatIndicator: true,
+  showVisualizer: false,
+  enableBloom: false,
+  enableParticleTrails: true,
+  enableScreenShake: false,
+  enableColorShift: false,
+  showTooltips: true,
+  showPerformance: false,
+  bgOpacity: 0.15,
+  physicsMode: 'default'
+};
+
+// ============================================
+// Canvas & Context
+// ============================================
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const overlayCanvas = document.getElementById("overlayCanvas");
+const overlayCtx = overlayCanvas.getContext("2d");
+const video = document.getElementById("video");
+const vizCanvas = document.getElementById("vizCanvas");
+const vizCtx = vizCanvas.getContext("2d");
+
+let dots = [];
+let mouse = {x: -1000, y: -1000};
+let fingerPositions = [];
+let fingerTrails = [];
+let particleBursts = [];
+let colorShift = 0;
+let lastVolume = 0;
+let lastTime = performance.now();
+let fps = 60;
+let frameCount = 0;
+let screenShake = {x: 0, y: 0};
+
+// ============================================
+// Audio System Enhanced
+// ============================================
+let audioContext = null;
+let analyser = null;
+let dataArray = null;
+let audioSource = null;
+let audioStream = null;
+let micActive = false;
+
+// Beat detection
+let beatHistory = [];
+let lastBeatTime = 0;
+let bpm = 0;
+let energy = 0;
+
+const songs = [
+  {file: "chocolate.mp3", name: "Chocolate Dream", theme: ["#d9b38c","#f1d9b8","#cfa87a","#e3c4a3"], bpm: 120},
+  {file: "rose.mp3", name: "Rose Garden", theme: ["#ffb3ba","#ffdfdf","#ff8da1","#ffc0cb"], bpm: 110},
+  {file: "bread.mp3", name: "Fresh Bread", theme: ["#f5e1a4","#edd9b0","#d6b67b","#e6cfa3"], bpm: 100},
+  {file: "bake_a_pie.mp3", name: "Bake a Pie", theme: ["#ffd699","#ffcc99","#ffe5b4","#ffd27f"], bpm: 115},
+  {file: "donut.mp3", name: "Sweet Donut", theme: ["#ffb3ba","#ffdfba","#ffffba","#baffc9"], bpm: 125}
+];
+
+songs.forEach(s => {
+  s.audio = new Audio(s.file);
+  s.audio.volume = 1.0;
+  s.audio.addEventListener('error', () => console.warn(`Failed to load ${s.file}`));
+});
+
+let currentSongIndex = -1;
+let songPlaying = false;
+let clapCooldown = false;
+
+// ============================================
+// Camera & Hand Tracking
+// ============================================
+let cameraStream = null;
+let cameraActive = false;
+let hands = null;
+let camera = null;
+let lastGesture = null;
+let gestureHistory = [];
+
+// ============================================
+// Recording
+// ============================================
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+
+// ============================================
+// UI Elements
+// ============================================
+const elements = {
+  micBtn: document.getElementById("micBtn"),
+  cameraBtn: document.getElementById("cameraBtn"),
+  settingsBtn: document.getElementById("settingsBtn"),
+  playlistBtn: document.getElementById("playlistBtn"),
+  recordBtn: document.getElementById("recordBtn"),
+  micStatus: document.getElementById("micStatus"),
+  camStatus: document.getElementById("camStatus"),
+  volStatus: document.getElementById("volStatus"),
+  songCount: document.getElementById("songCount"),
+  fpsStatus: document.getElementById("fpsStatus"),
+  bpmStatus: document.getElementById("bpmStatus"),
+  energyStatus: document.getElementById("energyStatus"),
+  nowPlaying: document.getElementById("nowPlaying"),
+  settingsPanel: document.getElementById("settingsPanel"),
+  playlist: document.getElementById("playlist"),
+  gestureHints: document.getElementById("gestureHints"),
+  gestureList: document.getElementById("gestureList"),
+  beatIndicator: document.getElementById("beatIndicator"),
+  visualizer: document.getElementById("visualizer"),
+  tooltips: document.getElementById("tooltips"),
+  performanceMonitor: document.getElementById("performanceMonitor"),
+  recordingIndicator: document.getElementById("recordingIndicator")
+};
+
+// ============================================
+// Color Themes
+// ============================================
+const colorThemes = {
+  neon: ["#ff00ff","#00ffff","#ffff00","#ff0080"],
+  pastel: ["#ffc9de","#c9e4ff","#fff9c9","#d4ffc9"],
+  fire: ["#ff4500","#ff6347","#ff7f50","#ffa500"],
+  ocean: ["#006994","#0099cc","#33ccff","#66d9ff"],
+  custom: ["#4dd2ff","#88d4ff","#c5a3ff","#9d4dff"]
+};
+
+// ============================================
+// Canvas Management
+// ============================================
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  overlayCanvas.width = window.innerWidth;
+  overlayCanvas.height = window.innerHeight;
+  initDots();
+}
+
+function initDots() {
+  const oldDots = dots.slice();
+  dots = [];
+  
+  let colors = config.colorTheme === 'auto' && currentSongIndex >= 0
+    ? songs[currentSongIndex].theme
+    : colorThemes[config.colorTheme] || colorThemes.custom;
+  
+  for (let i = 0; i < config.particleCount; i++) {
+    if (oldDots[i]) {
+      dots.push({...oldDots[i], color: colors[Math.floor(Math.random() * colors.length)]});
+    } else {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      dots.push({
+        x, y,
+        baseX: x,
+        baseY: y,
+        size: Math.random() * 3 + 1,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: 0,
+        vy: 0,
+        angle: Math.random() * Math.PI * 2,
+        speed: Math.random() * 0.5,
+        life: 1
+      });
+    }
+  }
+  
+  document.getElementById("particleCount").textContent = dots.length;
+}
+
+// ============================================
+// Input Handling
+// ============================================
+window.addEventListener("mousemove", (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+window.addEventListener("touchmove", (e) => {
+  e.preventDefault();
+  if (e.touches.length > 0) {
+    mouse.x = e.touches[0].clientX;
+    mouse.y = e.touches[0].clientY;
+  }
+}, {passive: false});
+
+// Keyboard shortcuts
+window.addEventListener("keydown", (e) => {
+  switch(e.key) {
+    case ' ':
+      e.preventDefault();
+      playNextSong();
+      break;
+    case 'p':
+    case 'P':
+      elements.playlist.classList.toggle('show');
+      break;
+    case 'v':
+    case 'V':
+      config.showVisualizer = !config.showVisualizer;
+      elements.visualizer.classList.toggle('show', config.showVisualizer);
+      break;
+    case 'ArrowUp':
+      config.particleCount = Math.min(10000, config.particleCount + 100);
+      initDots();
+      document.getElementById("particleCountSlider").value = config.particleCount;
+      document.getElementById("particleCountVal").textContent = config.particleCount;
+      break;
+    case 'ArrowDown':
+      config.particleCount = Math.max(500, config.particleCount - 100);
+      initDots();
+      document.getElementById("particleCountSlider").value = config.particleCount;
+      document.getElementById("particleCountVal").textContent = config.particleCount;
+      break;
+  }
+});
+
+// ============================================
+// Microphone System Enhanced
+// ============================================
+async function startMic() {
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    audioSource = audioContext.createMediaStreamSource(audioStream);
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.75;
+    audioSource.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    
+    micActive = true;
+    elements.micBtn.textContent = "🎤 Stop";
+    elements.micBtn.classList.add("active");
+    elements.micStatus.textContent = "ON";
+    
+    if (config.showBeatIndicator) {
+      elements.beatIndicator.style.display = 'block';
+    }
+  } catch(err) {
+    alert("Microphone access denied.");
+    console.error(err);
+  }
+}
+
+function stopMic() {
+  if (audioSource) audioSource.disconnect();
+  if (analyser) analyser.disconnect();
+  if (audioContext && audioContext.state !== "closed") audioContext.close();
+  if (audioStream) audioStream.getTracks().forEach(t => t.stop());
+  
+  audioSource = analyser = audioContext = dataArray = audioStream = null;
+  micActive = false;
+  elements.micBtn.textContent = "🎤 Mic";
+  elements.micBtn.classList.remove("active");
+  elements.micStatus.textContent = "OFF";
+  elements.beatIndicator.style.display = 'none';
+}
+
+elements.micBtn.addEventListener("click", () => {
+  micActive ? stopMic() : startMic();
+});
+
+// ============================================
+// Beat Detection Algorithm
+// ============================================
+function detectBeat(volume) {
+  const now = performance.now();
+  beatHistory.push({time: now, volume});
+  
+  // Keep last 2 seconds
+  beatHistory = beatHistory.filter(b => now - b.time < 2000);
+  
+  if (beatHistory.length < 10) return false;
+  
+  const avgVolume = beatHistory.reduce((sum, b) => sum + b.volume, 0) / beatHistory.length;
+  const threshold = avgVolume * config.beatSensitivity;
+  
+  const isBeat = volume > threshold && (now - lastBeatTime) > 200;
+  
+  if (isBeat) {
+    lastBeatTime = now;
+    
+    // Calculate BPM
+    if (beatHistory.length > 1) {
+      const recentBeats = beatHistory.filter(b => now - b.time < 5000 && b.volume > threshold);
+      if (recentBeats.length > 2) {
+        const intervals = [];
+        for (let i = 1; i < recentBeats.length; i++) {
+          intervals.push(recentBeats[i].time - recentBeats[i-1].time);
+        }
+        const avgInterval = intervals.reduce((a,b) => a+b) / intervals.length;
+        bpm = Math.round(60000 / avgInterval);
+        elements.bpmStatus.textContent = bpm;
+      }
+    }
+    
+    // Beat indicator
+    if (config.showBeatIndicator) {
+      elements.beatIndicator.classList.add('beat');
+      setTimeout(() => elements.beatIndicator.classList.remove('beat'), 100);
+    }
+    
+    // Screen shake
+    if (config.enableScreenShake) {
+      screenShake.x = (Math.random() - 0.5) * 10;
+      screenShake.y = (Math.random() - 0.5) * 10;
+    }
+    
+    // Particle burst
+    if (config.visualMode === 'fireworks') {
+      createParticleBurst(Math.random() * canvas.width, Math.random() * canvas.height);
+    }
+  }
+  
+  return isBeat;
+}
+
+function createParticleBurst(x, y) {
+  const colors = getCurrentColors();
+  for (let i = 0; i < 20; i++) {
+    const angle = (Math.PI * 2 * i) / 20;
+    const speed = 5 + Math.random() * 5;
+    particleBursts.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 60,
+      size: 3
+    });
+  }
+}
+
+// ============================================
+// Camera & Advanced Gesture Recognition
+// ============================================
+function detectGesture(landmarks) {
+  const thumb = landmarks[4];
+  const index = landmarks[8];
+  const middle = landmarks[12];
+  const ring = landmarks[16];
+  const pinky = landmarks[20];
+  
+  const distance = (a, b) => Math.sqrt(
+    Math.pow(a.x - b.x, 2) + 
+    Math.pow(a.y - b.y, 2) + 
+    Math.pow(a.z - b.z, 2)
+  );
+  
+  // Thumbs up
+  if (thumb.y < index.y && thumb.y < middle.y && 
+      distance(index, middle) < 0.05 && distance(middle, ring) < 0.05) {
+    return "👍 Thumbs Up";
+  }
+  
+  // Peace sign
+  const indexMidDist = distance(index, middle);
+  if (indexMidDist > 0.08 && distance(ring, pinky) < 0.05) {
+    return "✌️ Peace";
+  }
+  
+  // Rock sign
+  if (distance(index, pinky) > 0.15 && distance(middle, ring) < 0.05) {
+    return "🤘 Rock On";
+  }
+  
+  // Fist
+  const avgDist = (distance(thumb, index) + distance(thumb, middle) + 
+                   distance(thumb, ring) + distance(thumb, pinky)) / 4;
+  if (avgDist < 0.08) {
+    return "✊ Fist";
+  }
+  
+  // Open palm
+  if (avgDist > 0.15) {
+    return "🖐️ Open Palm";
+  }
+  
+  return null;
+}
+
+function onHandResults(results) {
+  fingerPositions = [];
+  
+  if (results.multiHandLandmarks) {
+    for (const landmarks of results.multiHandLandmarks) {
+      const fingertips = [4, 8, 12, 16, 20];
+      
+      for (const idx of fingertips) {
+        const landmark = landmarks[idx];
+        const x = (1 - landmark.x) * canvas.width;
+        const y = landmark.y * canvas.height;
+        fingerPositions.push({x, y});
+        
+        if (config.showTrails) {
+          fingerTrails.push({
+            x, y, 
+            life: 30, 
+            color: getCurrentColors()[0],
+            size: 5
+          });
+        }
+      }
+      
+      if (config.showGestures) {
+        const gesture = detectGesture(landmarks);
+        if (gesture && gesture !== lastGesture) {
+          lastGesture = gesture;
+          elements.gestureList.textContent = gesture;
+          gestureHistory.push({gesture, time: Date.now()});
+          
+          // Gesture actions
+          if (gesture === "👍 Thumbs Up") {
+            config.particleCount = Math.min(10000, config.particleCount + 500);
+            initDots();
+          } else if (gesture === "✊ Fist") {
+            playNextSong();
+          }
+        }
+      }
+    }
+  }
+  
+  fingerTrails = fingerTrails.filter(t => t.life-- > 0);
+}
+
+async function startCamera() {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {width: 640, height: 480}
+    });
+    video.srcObject = cameraStream;
+    video.style.display = "block";
+    
+    hands = new Hands({
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.5
+    });
+    hands.onResults(onHandResults);
+    
+    camera = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({image: video});
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+    
+    cameraActive = true;
+    elements.cameraBtn.textContent = "📷 Stop";
+    elements.cameraBtn.classList.add("active");
+    elements.camStatus.textContent = "ON";
+  } catch(err) {
+    alert("Camera access denied.");
+    console.error(err);
+  }
+}
+
+function stopCamera() {
+  if (camera) {camera.stop(); camera = null;}
+  if (hands) {hands.close(); hands = null;}
+  if (cameraStream) {cameraStream.getTracks().forEach(t => t.stop());}
+  
+  video.srcObject = null;
+  video.style.display = "none";
+  cameraStream = null;
+  cameraActive = false;
+  fingerPositions = [];
+  fingerTrails = [];
+  lastGesture = null;
+  
+  elements.cameraBtn.textContent = "📷 Camera";
+  elements.cameraBtn.classList.remove("active");
+  elements.camStatus.textContent = "OFF";
+}
+
+elements.cameraBtn.addEventListener("click", () => {
+  cameraActive ? stopCamera() : startCamera();
+});
+
+// ============================================
+// Recording System
+// ============================================
+async function startRecording() {
+  try {
+    const stream = canvas.captureStream(30);
+    
+    // Add audio if mic is active
+    if (micActive && audioStream) {
+      const audioTracks = audioStream.getAudioTracks();
+      audioTracks.forEach(track => stream.addTrack(track));
+    }
+    
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp9'
+    });
+    
+    recordedChunks = [];
+    
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        recordedChunks.push(e.data);
+      }
+    };
+    
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, {type: 'video/webm'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audiovisual-${Date.now()}.webm`;
+      a.click();
+    };
+    
+    mediaRecorder.start();
+    isRecording = true;
+    elements.recordBtn.textContent = "⏹️ Stop";
+    elements.recordBtn.classList.add("active");
+    elements.recordingIndicator.style.display = 'block';
+  } catch(err) {
+    alert("Recording failed: " + err.message);
+    console.error(err);
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && isRecording) {
+    mediaRecorder.stop();
+    isRecording = false;
+    elements.recordBtn.textContent = "⏺️ Record";
+    elements.recordBtn.classList.remove("active");
+    elements.recordingIndicator.style.display = 'none';
+  }
+}
+
+elements.recordBtn.addEventListener("click", () => {
+  isRecording ? stopRecording() : startRecording();
+});
+
+// ============================================
+// Song Management
+// ============================================
+function playNextSong() {
+  if (clapCooldown) return;
+  clapCooldown = true;
+  setTimeout(() => clapCooldown = false, 1000);
+  
+  if (songPlaying && currentSongIndex >= 0) {
+    songs[currentSongIndex].audio.pause();
+    songs[currentSongIndex].audio.currentTime = 0;
+  }
+  
+  currentSongIndex = (currentSongIndex + 1) % songs.length;
+  const nextSong = songs[currentSongIndex];
+  
+  nextSong.audio.play().catch(err => console.warn("Playback failed:", err));
+  songPlaying = true;
+  
+  elements.nowPlaying.querySelector('.title').textContent = `Now Playing: ${nextSong.name}`;
+  elements.nowPlaying.querySelector('.subtitle').textContent = `BPM: ${nextSong.bpm} | Theme: ${config.visualMode}`;
+  elements.nowPlaying.classList.add('show');
+  elements.songCount.textContent = `${currentSongIndex + 1}/${songs.length}`;
+  
+  setTimeout(() => {
+    elements.nowPlaying.classList.remove('show');
+  }, 3000);
+  
+  nextSong.audio.onended = () => {
+    songPlaying = false;
+  };
+  
+  if (config.colorTheme === 'auto') {
+    const colors = nextSong.theme;
+    dots.forEach(dot => {
+      dot.color = colors[Math.floor(Math.random() * colors.length)];
+    });
+  }
+  
+  updatePlaylist();
+  colorShift += 30;
+}
+
+function getCurrentColors() {
+  if (config.colorTheme === 'auto' && currentSongIndex >= 0) {
+    return songs[currentSongIndex].theme;
+  }
+  return colorThemes[config.colorTheme] || colorThemes.custom;
+}
+
+// ============================================
+// Playlist UI
+// ============================================
+function updatePlaylist() {
+  const container = document.getElementById("playlistItems");
+  container.innerHTML = '';
+  
+  songs.forEach((song, index) => {
+    const item = document.createElement('div');
+    item.className = 'playlist-item' + (index === currentSongIndex ? ' active' : '');
+    item.innerHTML = `
+      <span class="name">${song.name}</span>
+      <span class="duration">BPM: ${song.bpm}</span>
+    `;
+    item.addEventListener('click', () => {
+      if (currentSongIndex >= 0) {
+        songs[currentSongIndex].audio.pause();
+        songs[currentSongIndex].audio.currentTime = 0;
+      }
+      currentSongIndex = index - 1;
+      playNextSong();
+    });
+    container.appendChild(item);
+  });
+}
+
+elements.playlistBtn.addEventListener("click", () => {
+  elements.playlist.classList.toggle('show');
+  if (elements.playlist.classList.contains('show')) {
+    updatePlaylist();
+  }
+});
+
+// ============================================
+// Visualizer
+// ============================================
+function drawVisualizer() {
+  if (!config.showVisualizer || !analyser || !dataArray) return;
+  
+  vizCtx.fillStyle = "rgba(10, 20, 40, 0.5)";
+  vizCtx.fillRect(0, 0, vizCanvas.width, vizCanvas.height);
+  
+  analyser.getByteFrequencyData(dataArray);
+  
+  const barWidth = vizCanvas.width / dataArray.length * 2;
+  let x = 0;
+  
+  for (let i = 0; i < dataArray.length; i++) {
+    const barHeight = (dataArray[i] / 255) * vizCanvas.height;
+    
+    const colors = getCurrentColors();
+    vizCtx.fillStyle = colors[i % colors.length];
+    vizCtx.fillRect(x, vizCanvas.height - barHeight, barWidth, barHeight);
+    
+    x += barWidth + 1;
+  }
+}
+
+// ============================================
+// Advanced Visual Modes
+// ============================================
+function applyPhysics(dot, volume) {
+  const modes = {
+    default: () => {
+      const spring = 0.05 * (1 - volume * 2);
+      dot.vx += (dot.baseX - dot.x) * spring;
+      dot.vy += (dot.baseY - dot.y) * spring;
+      const friction = 0.85 + (volume * 0.1);
+      dot.vx *= friction;
+      dot.vy *= friction;
+    },
+    bouncy: () => {
+      if (dot.x < 0 || dot.x > canvas.width) dot.vx *= -0.8;
+      if (dot.y < 0 || dot.y > canvas.height) dot.vy *= -0.8;
+      dot.vx *= 0.99;
+      dot.vy *= 0.99;
+    },
+    sticky: () => {
+      const spring = 0.15;
+      dot.vx += (dot.baseX - dot.x) * spring;
+      dot.vy += (dot.baseY - dot.y) * spring;
+      dot.vx *= 0.7;
+      dot.vy *= 0.7;
+    },
+    chaotic: () => {
+      dot.vx += (Math.random() - 0.5) * 2;
+      dot.vy += (Math.random() - 0.5) * 2;
+      dot.vx *= 0.95;
+      dot.vy *= 0.95;
+    }
+  };
+  
+  (modes[config.physicsMode] || modes.default)();
+}
+
+function drawParticles(volume) {
+  dots.forEach(dot => {
+    // Mouse interaction
+    const dx = mouse.x - dot.x;
+    const dy = mouse.y - dot.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist < config.interactionRange) {
+      const force = (config.interactionRange - dist) / config.interactionRange;
+      const multiplier = config.mouseAttract ? 1 : -1;
+      dot.vx += multiplier * (dx / dist) * force * 5 * config.sensitivity;
+      dot.vy += multiplier * (dy / dist) * force * 5 * config.sensitivity;
+    }
+    
+    // Finger interactions
+    for (const finger of fingerPositions) {
+      const fdx = finger.x - dot.x;
+      const fdy = finger.y - dot.y;
+      const fdist = Math.sqrt(fdx * fdx + fdy * fdy);
+      
+      if (fdist < config.interactionRange) {
+        const fforce = (config.interactionRange - fdist) / config.interactionRange;
+        dot.vx -= (fdx / fdist) * fforce * 5 * config.sensitivity;
+        dot.vy -= (fdy / fdist) * fforce * 5 * config.sensitivity;
+      }
+    }
+    
+    // Audio reactivity
+    if (volume > 0.02) {
+      const jitter = volume * 25 * config.sensitivity * config.audioReactivity;
+      dot.vx += (Math.random() - 0.5) * jitter;
+      dot.vy += (Math.random() - 0.5) * jitter;
+    }
+    
+    // Physics
+    applyPhysics(dot, volume);
+    
+    // Update
+    dot.x += dot.vx;
+    dot.y += dot.vy;
+    
+    // Color shift
+    if (config.enableColorShift) {
+      const hueShift = (Date.now() / 50) % 360;
+      ctx.filter = `hue-rotate(${hueShift}deg)`;
+    }
+    
+    // Draw
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, dot.size + volume * 5 * config.audioReactivity, 0, Math.PI * 2);
+    ctx.fillStyle = dot.color;
+    ctx.globalAlpha = 0.8;
+    ctx.fill();
+    
+    if (config.enableBloom) {
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = dot.color;
+    }
+    
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.filter = 'none';
+  });
+}
+
+function drawWaves(volume) {
+  const time = Date.now() / 1000;
+  
+  dots.forEach((dot, i) => {
+    dot.angle += 0.02 + volume * 0.1 * config.audioReactivity;
+    const waveX = Math.sin(dot.angle + i * 0.01) * 50 * (1 + volume * 2);
+    const waveY = Math.cos(dot.angle * 0.8 + i * 0.01) * 50 * (1 + volume * 2);
+    
+    dot.x = dot.baseX + waveX;
+    dot.y = dot.baseY + waveY;
+    
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, dot.size + volume * 5, 0, Math.PI * 2);
+    ctx.fillStyle = dot.color;
+    ctx.globalAlpha = 0.7;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawSpiral(volume) {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const time = Date.now() / 1000;
+  
+  dots.forEach((dot, i) => {
+    const angle = (i / dots.length) * Math.PI * 2 * 5 + time * 0.5 + volume * 2;
+    const radius = (i / dots.length) * Math.min(canvas.width, canvas.height) * 0.4;
+    
+    dot.x = centerX + Math.cos(angle) * radius * (1 + volume * 0.5);
+    dot.y = centerY + Math.sin(angle) * radius * (1 + volume * 0.5);
+    
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, dot.size + volume * 3, 0, Math.PI * 2);
+    ctx.fillStyle = dot.color;
+    ctx.globalAlpha = 0.8;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawConstellation(volume) {
+  dots.forEach(dot => {
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, dot.size + volume * 3, 0, Math.PI * 2);
+    ctx.fillStyle = dot.color;
+    ctx.fill();
+  });
+  
+  ctx.strokeStyle = "rgba(77, 210, 255, 0.2)";
+  ctx.lineWidth = 0.5 + volume * 2;
+  
+  for (let i = 0; i < dots.length; i++) {
+    const dot1 = dots[i];
+    
+    for (let j = i + 1; j < Math.min(i + 5, dots.length); j++) {
+      const dot2 = dots[j];
+      const dx = dot2.x - dot1.x;
+      const dy = dot2.y - dot1.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < 100) {
+        ctx.beginPath();
+        ctx.moveTo(dot1.x, dot1.y);
+        ctx.lineTo(dot2.x, dot2.y);
+        ctx.globalAlpha = (100 - dist) / 100 * 0.3;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+}
+
+function drawFireworks(volume) {
+  // Update and draw particle bursts
+  particleBursts = particleBursts.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.2; // Gravity
+    p.life--;
+    
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 60;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    
+    return p.life > 0;
+  });
+  
+  // Regular particles with less motion
+  dots.forEach(dot => {
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, dot.size, 0, Math.PI * 2);
+    ctx.fillStyle = dot.color;
+    ctx.globalAlpha = 0.3;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawGalaxy(volume) {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const time = Date.now() / 1000;
+  
+  dots.forEach((dot, i) => {
+    const armOffset = (i % 3) * (Math.PI * 2 / 3);
+    const distance = (i / dots.length) * Math.min(canvas.width, canvas.height) * 0.45;
+    const angle = armOffset + (distance / 100) + time * 0.3 + volume;
+    
+    dot.x = centerX + Math.cos(angle) * distance;
+    dot.y = centerY + Math.sin(angle) * distance;
+    
+    const size = dot.size * (1 - distance / (canvas.width * 0.45)) * (1 + volume * 2);
+    
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, size, 0, Math.PI * 2);
+    ctx.fillStyle = dot.color;
+    ctx.globalAlpha = 0.8;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+function drawNeural(volume) {
+  // Draw nodes
+  dots.forEach(dot => {
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.y, dot.size + volume * 3, 0, Math.PI * 2);
+    ctx.fillStyle = dot.color;
+    ctx.fill();
+  });
+  
+  // Draw connections with activity
+  const colors = getCurrentColors();
+  
+  for (let i = 0; i < dots.length; i += 10) {
+    const dot1 = dots[i];
+    const connections = Math.floor(Math.random() * 3) + 1;
+    
+    for (let c = 0; c < connections; c++) {
+      const targetIdx = Math.floor(Math.random() * dots.length);
+      const dot2 = dots[targetIdx];
+      
+      const dx = dot2.x - dot1.x;
+      const dy = dot2.y - dot1.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < 300) {
+        const gradient = ctx.createLinearGradient(dot1.x, dot1.y, dot2.x, dot2.y);
+        gradient.addColorStop(0, colors[0]);
+        gradient.addColorStop(1, colors[1]);
+        
+        ctx.beginPath();
+        ctx.moveTo(dot1.x, dot1.y);
+        ctx.lineTo(dot2.x, dot2.y);
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = (1 + volume * 3) * (300 - dist) / 300;
+        ctx.globalAlpha = 0.2;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+}
+
+// ============================================
+// Main Animation Loop
+// ============================================
+function animate() {
+  frameCount++;
+  const now = performance.now();
+  const delta = now - lastTime;
+  fps = Math.round(1000 / delta);
+  lastTime = now;
+  
+  if (frameCount % 30 === 0) {
+    elements.fpsStatus.textContent = fps;
+  }
+  
+  // Apply screen shake
+  ctx.save();
+  ctx.translate(screenShake.x, screenShake.y);
+  screenShake.x *= 0.9;
+  screenShake.y *= 0.9;
+  
+  // Clear
+  ctx.fillStyle = `rgba(10, 20, 40, ${config.bgOpacity})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Get audio data
+  let volume = 0;
+  if (analyser && dataArray) {
+    analyser.getByteFrequencyData(dataArray);
+    
+    let sum = 0;
+    let start = 0;
+    let end = dataArray.length;
+    
+    // Filter by frequency range
+    switch(config.frequencyRange) {
+      case 'bass':
+        end = Math.floor(dataArray.length * 0.2);
+        break;
+      case 'mid':
+        start = Math.floor(dataArray.length * 0.2);
+        end = Math.floor(dataArray.length * 0.6);
+        break;
+      case 'high':
+        start = Math.floor(dataArray.length * 0.6);
+        break;
+    }
+    
+    for (let i = start; i < end; i++) {
+      sum += dataArray[i];
+    }
+    volume = sum / (end - start) / 255;
+  }
+  
+  // Beat detection
+  detectBeat(volume);
+  
+  // Energy calculation
+  energy = volume * 100;
+  if (frameCount % 30 === 0) {
+    const energyLevel = energy < 5 ? 'Low' : energy < 15 ? 'Medium' : energy < 30 ? 'High' : 'Extreme';
+    elements.energyStatus.textContent = energyLevel;
+  }
+  
+  // Clap detection
+  if (volume > 0.15 && volume > lastVolume * config.beatSensitivity && !clapCooldown) {
+    playNextSong();
+  }
+  
+  lastVolume = Math.max(0.01, volume);
+  elements.volStatus.textContent = volume.toFixed(2);
+  
+  // Draw finger trails
+  if (config.showTrails) {
+    fingerTrails.forEach(trail => {
+      ctx.beginPath();
+      ctx.arc(trail.x, trail.y, trail.size * (trail.life / 30), 0, Math.PI * 2);
+      ctx.fillStyle = trail.color;
+      ctx.globalAlpha = trail.life / 30;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  }
+  
+  // Draw based on visual mode
+  switch(config.visualMode) {
+    case 'waves':
+      drawWaves(volume);
+      break;
+    case 'spiral':
+      drawSpiral(volume);
+      break;
+    case 'constellation':
+      drawConstellation(volume);
+      break;
+    case 'fireworks':
+      drawFireworks(volume);
+      break;
+    case 'galaxy':
+      drawGalaxy(volume);
+      break;
+    case 'neural':
+      drawNeural(volume);
+      break;
+    default:
+      drawParticles(volume);
+  }
+  
+  ctx.restore();
+  
+  // Draw visualizer
+  drawVisualizer();
+  
+  // Performance monitoring
+  if (config.showPerformance && frameCount % 60 === 0) {
+    const memory = performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(1) : 'N/A';
+    document.getElementById("memUsage").textContent = memory + ' MB';
+    document.getElementById("drawCalls").textContent = dots.length;
+  }
+  
+  requestAnimationFrame(animate);
+}
+
+// ============================================
+// Settings Panel Management
+// ============================================
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const targetTab = tab.dataset.tab;
+    
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    tab.classList.add('active');
+    document.querySelector(`[data-content="${targetTab}"]`).classList.add('active');
+  });
+});
+
+// Settings controls
+const settingsControls = {
+  particleCountSlider: (v) => {
+    config.particleCount = parseInt(v);
+    document.getElementById("particleCountVal").textContent = v;
+    initDots();
+  },
+  interactionRange: (v) => {
+    config.interactionRange = parseInt(v);
+    document.getElementById("interactionRangeVal").textContent = v;
+  },
+  sensitivity: (v) => {
+    config.sensitivity = parseFloat(v);
+    document.getElementById("sensitivityVal").textContent = parseFloat(v).toFixed(1);
+  },
+  beatSensitivity: (v) => {
+    config.beatSensitivity = parseFloat(v);
+    document.getElementById("beatSensitivityVal").textContent = parseFloat(v).toFixed(1);
+  },
+  audioReactivity: (v) => {
+    config.audioReactivity = parseFloat(v);
+    document.getElementById("audioReactivityVal").textContent = parseFloat(v).toFixed(1);
+  },
+  bgOpacity: (v) => {
+    config.bgOpacity = parseFloat(v);
+    document.getElementById("bgOpacityVal").textContent = parseFloat(v).toFixed(2);
+  },
+  visualMode: (v) => config.visualMode = v,
+  colorTheme: (v) => {
+    config.colorTheme = v;
+    initDots();
+  },
+  frequencyRange: (v) => config.frequencyRange = v,
+  physicsMode: (v) => config.physicsMode = v,
+  showBeatIndicator: (v) => {
+    config.showBeatIndicator = v;
+    elements.beatIndicator.style.display = v && micActive ? 'block' : 'none';
+  },
+  showVisualizer: (v) => {
+    config.showVisualizer = v;
+    elements.visualizer.classList.toggle('show', v);
+  },
+  showTrails: (v) => config.showTrails = v,
+  showGestures: (v) => {
+    config.showGestures = v;
+    elements.gestureHints.classList.toggle('show', v && cameraActive);
+  },
+  mouseAttract: (v) => config.mouseAttract = v,
+  enableBloom: (v) => config.enableBloom = v,
+  enableParticleTrails: (v) => config.enableParticleTrails = v,
+  enableScreenShake: (v) => config.enableScreenShake = v,
+  enableColorShift: (v) => config.enableColorShift = v,
+  showTooltips: (v) => {
+    config.showTooltips = v;
+    elements.tooltips.classList.toggle('show', v);
+  },
+  showPerformance: (v) => {
+    config.showPerformance = v;
+    elements.performanceMonitor.classList.toggle('show', v);
+  }
+};
+
+Object.keys(settingsControls).forEach(id => {
+  const element = document.getElementById(id);
+  if (!element) return;
+  
+  const handler = settingsControls[id];
+  
+  if (element.type === 'checkbox') {
+    element.addEventListener('change', (e) => handler(e.target.checked));
+  } else if (element.type === 'range') {
+    element.addEventListener('input', (e) => handler(e.target.value));
+  } else {
+    element.addEventListener('change', (e) => handler(e.target.value));
+  }
+});
+
+elements.settingsBtn.addEventListener("click", () => {
+  elements.settingsPanel.classList.toggle("show");
+});
+
+document.getElementById("closeSettings").addEventListener("click", () => {
+  elements.settingsPanel.classList.remove("show");
+});
+
+// ============================================
+// Initialization
+// ============================================
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+updatePlaylist();
+
+// Show tooltips initially
+if (config.showTooltips) {
+  elements.tooltips.classList.add('show');
+  setTimeout(() => {
+    elements.tooltips.classList.remove('show');
+  }, 10000);
+}
+
+animate();
+
+// Hide now playing initially
+setTimeout(() => {
+  elements.nowPlaying.style.opacity = "0";
+}, 100);
+</script>
+
+</body>
+</html>
